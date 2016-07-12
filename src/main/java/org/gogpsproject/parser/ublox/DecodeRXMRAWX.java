@@ -20,93 +20,89 @@
 
 package org.gogpsproject.parser.ublox;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-//import java.text.SimpleDateFormat;
-import java.util.Calendar;
-//import java.util.Date;
-import java.util.TimeZone;
-
 import org.gogpsproject.ObservationSet;
 import org.gogpsproject.Observations;
 import org.gogpsproject.Time;
 import org.gogpsproject.util.Bits;
 import org.gogpsproject.util.UnsignedOperation;
 
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.TimeZone;
+
+//import java.text.SimpleDateFormat;
+//import java.util.Date;
+
 
 public class DecodeRXMRAWX {
-	private InputStream in;
+	// private InputStream in;
 
 //	private int[] fdata;
 //	private int[] fbits;
 //	private boolean end = true;
-	
+
 	private Boolean[] multiConstellation;
 
-	public DecodeRXMRAWX(InputStream in) {
-		this.in = in;
+	public DecodeRXMRAWX() {
 	}
 
-	public DecodeRXMRAWX(InputStream in, Boolean[] multiConstellation) throws IOException {
-		this.in = in;		
-		this.multiConstellation = multiConstellation;
-	}
-	
-	public Observations decode(OutputStream logos) throws IOException, UBXException {
+/*    public DecodeRXMRAWX(InputStream in) {
+        this.in = in;
+    }
+
+    public DecodeRXMRAWX(InputStream in, Boolean[] multiConstellation) throws IOException {
+        this.in = in;
+        this.multiConstellation = multiConstellation;
+    }*/
+
+	public Observations decode(final byte[] byteData) {
 		// parse little Endian data
 		int[] length = new int[2];
 		int[] data;
 
-		length[1] = in.read();
-		length[0] = in.read();
+		length[1] = byteData[4];
+		length[0] = byteData[5];
 
-		int CH_A = 0;
-		int CH_B = 0;
-		CH_A += 0x02;CH_B += CH_A;
+		int len = length[0] * 256 + length[1];
 
-		CH_A += 0x10;CH_B += CH_A;
-		CH_A += length[1];CH_B += CH_A;
-		CH_A += length[0];CH_B += CH_A;
+		System.out.println("Length : " + len);
 
-		int len = length[0]*256+length[1];
-		
-		boolean gpsEnable = multiConstellation[0];
-		boolean qzsEnable = multiConstellation[1];
-		boolean gloEnable = multiConstellation[2];
+/*        boolean gpsEnable = multiConstellation[0];
+        boolean qzsEnable = multiConstellation[1];
+        boolean gloEnable = multiConstellation[2];
 //		boolean galEnable = multiConstellation[3];
-//		boolean bdsEnable = multiConstellation[4];
-		
-		
-		if (len == 0) {
-			throw new UBXException("Zero-length RXM-RAWX message");
+//		boolean bdsEnable = multiConstellation[4];*/
+
+
+		if (len <= 0) {
+			System.out.println("Zero length UBX message");
+			return null;
 		}
 
 		//System.out.println("Length : " + len);
-		data = new int[16];
+		data = new int[len];
 		//System.out.print("\n Header ");
-		for (int i = 0; i < 16; i++) {
-			data[i] = in.read();
-			CH_A += data[i];CH_B += CH_A;
-			if(logos!=null) logos.write(data[i]);
+		for (int i = 6; i < 6 + len; i++) {
+			data[i - 6] = byteData[i];
+			//CH_A += data[i];CH_B += CH_A;
 //			System.out.print("0x" + Integer.toHexString(data[i]) + " ");
 		}
-		
+
 		boolean[] bits = new boolean[8 * 8]; // rcvTow (R8)
 		int indice = 0;
-		for (int j = 7; j >= 0 ; j--) {
+		for (int j = 7; j >= 0; j--) {
 			boolean[] temp1 = Bits.intToBits(data[j], 8);
 			for (int i = 0; i < 8; i++) {
 				bits[indice] = temp1[i];
 				indice++;
 			}
 		}
-//		System.out.println("tow :  " + UnsignedOperation.toDouble(Bits.tobytes(bits)) );
+		System.out.println("tow :  " + UnsignedOperation.toDouble(Bits.tobytes(bits)));
 		double tow = UnsignedOperation.toDouble(Bits.tobytes(bits));
-//		tow = tow * 1000; // convert to milliseconds 
+//		tow = tow * 1000; // convert to milliseconds
 //		System.out.println("tow :  " + tow );
 
-				
+
 		bits = new boolean[8 * 2]; // week (U2)
 		indice = 0;
 		for (int j = 9; j >= 8; j--) {
@@ -116,34 +112,36 @@ public class DecodeRXMRAWX {
 				indice++;
 			}
 		}
-		int week = (int)Bits.bitsTwoComplement(bits);
-//		System.out.println("Week :  " + week );
-		
-		
+		int week = (int) Bits.bitsTwoComplement(bits);
+		System.out.println("Week :  " + week);
+
+		Observations o = new Observations(new Time(week, tow), 0);
+
+
 		bits = new boolean[8]; // leapS (I1)
 		indice = 0;
 		boolean[] temp1 = Bits.intToBits(data[10], 8);
 		for (int i = 0; i < 8; i++) {
 			bits[indice] = temp1[i];
 			indice++;
-		}			
+		}
 		long leapS = Bits.bitsTwoComplement(bits);
-		leapS = leapS * 1000; // convert to milliseconds 
+		leapS = leapS * 1000; // convert to milliseconds
 //		tow = tow - leapS ;
-//		System.out.println("leapS :  " + leapS );
-		
-		
+		System.out.println("leapS :  " + leapS);
+
+
 		bits = new boolean[8]; // numMeas (U1)
 		indice = 0;
 		temp1 = Bits.intToBits(data[11], 8);
 		for (int i = 0; i < 8; i++) {
 			bits[indice] = temp1[i];
 			indice++;
-		}		
-		int numMeas = (int)Bits.bitsToUInt(bits);
-//		System.out.println("numMeas :  " + numMeas + " S ");
+		}
+		int numMeas = (int) Bits.bitsToUInt(bits);
+		System.out.println("numMeas :  " + numMeas + " S ");
+		o.setNumMeas(numMeas);
 
-		
 		bits = new boolean[8]; // recStat (X1)
 		indice = 0;
 		temp1 = Bits.intToBits(data[12], 8);
@@ -159,9 +157,9 @@ public class DecodeRXMRAWX {
 			bits[indice] = temp1[i];
 			indice++;
 		}
-//		System.out.println("Res1 :  " + Bits.bitsToUInt(bits) + "  ");
-		
-		
+		System.out.println("Res1 :  " + Bits.bitsToUInt(bits) + "  ");
+
+
 		bits = new boolean[8]; // reserved2 (U1)
 		indice = 0;
 		temp1 = Bits.intToBits(data[14], 8);
@@ -169,9 +167,9 @@ public class DecodeRXMRAWX {
 			bits[indice] = temp1[i];
 			indice++;
 		}
-//		System.out.println("Res2 :  " + Bits.bitsToUInt(bits) + "  ");
+		System.out.println("Res2 :  " + Bits.bitsToUInt(bits) + "  ");
 
-		
+
 		bits = new boolean[8]; // reserved3 (U1)
 		indice = 0;
 		temp1 = Bits.intToBits(data[15], 8);
@@ -179,14 +177,13 @@ public class DecodeRXMRAWX {
 			bits[indice] = temp1[i];
 			indice++;
 		}
-//		System.out.println("Res3 :  " + Bits.bitsToUInt(bits) + "  ");
-		
+		System.out.println("Res3 :  " + Bits.bitsToUInt(bits) + "  ");
+
 		data = new int[len - 16];
 
-		for (int i = 0; i < len - 16; i++) {
-			data[i] = in.read();
-			CH_A += data[i];CH_B += CH_A;
-			if(logos!=null) logos.write(data[i]);
+		for (int i = 22; i < len + 6; i++) {
+			data[i - 22] = byteData[i];
+			// CH_A += data[i];CH_B += CH_A;
 			//System.out.print("0x" + Integer.toHexString(data[i]) + " ");
 		}
 		//System.out.println();
@@ -194,7 +191,7 @@ public class DecodeRXMRAWX {
 //		long gmtTS = getGMTTS((long) tow, week);
 //		gmtTS = gmtTS - leapS ;
 //		Observations o = new Observations(new Time(gmtTS),0);
-		Observations o = new Observations(new Time(week, tow),0);
+
 //		Time refTime = new Time((int)week, tow/1000);
 //		Observations o = new Observations(refTime,0);
 
@@ -203,14 +200,16 @@ public class DecodeRXMRAWX {
 
 		boolean anomalousValues = false;
 
-		int gpsCounter = 0;
+		//int gpsCounter = 0;
+
+		ArrayList<ObservationSet> obsSet = new ArrayList<ObservationSet>();
 
 		for (int k = 0; k < (len - 16) / 32; k++) {
 
 			ObservationSet os = new ObservationSet();
 
 			int offset = k * 32;
-			
+
 			bits = new boolean[8 * 8]; // preMes (R8)
 			indice = 0;
 			for (int j = offset + 7; j >= 0 + offset; j--) {
@@ -226,7 +225,7 @@ public class DecodeRXMRAWX {
 			}
 //			System.out.print("SV" + k +"\tPhase: "
 //					+ carrierPhase + "  ");
-			
+
 			bits = new boolean[8 * 8]; // cpMes (R8)
 			indice = 0;
 			for (int j = offset + 7 + 8; j >= 8 + offset; j--) {
@@ -237,10 +236,10 @@ public class DecodeRXMRAWX {
 				}
 			}
 			double carrierPhase = UnsignedOperation.toDouble(Bits.tobytes(bits));
-//			System.out.print(" Code: "
-//					+ pseudoRange + "  ");
+			System.out.print(" Code: "
+					+ pseudoRange + "  " + carrierPhase);
 
-			
+
 			bits = new boolean[8 * 4]; // doMes (R4)
 			indice = 0;
 			for (int j = offset + 7 + 8 + 4; j >= 8 + 8 + offset; j--) {
@@ -251,9 +250,9 @@ public class DecodeRXMRAWX {
 				}
 			}
 			float d1 = UnsignedOperation.toFloat(Bits.tobytes(bits));
-//			System.out.print(" Doppler: "
-//					+ d1 + "  ");
-			
+			System.out.print(" Doppler: "
+					+ d1 + "  ");
+
 			bits = new boolean[8]; // gnssId (U1)
 			indice = 0;
 			temp1 = Bits.intToBits(data[offset + 7 + 8 + 4 + 1], 8);
@@ -261,10 +260,10 @@ public class DecodeRXMRAWX {
 				bits[indice] = temp1[i];
 				indice++;
 			}
-			int satType = (int)Bits.bitsToUInt(bits) ;		
-//			System.out.print(" gnssID: "
-//					+ satType + "  ");		
-			
+			int satType = (int) Bits.bitsToUInt(bits);
+			System.out.print(" gnssID: "
+					+ satType + "  ");
+
 
 			bits = new boolean[8];  // svId (U1)
 			indice = 0;
@@ -274,13 +273,13 @@ public class DecodeRXMRAWX {
 				indice++;
 			}
 
-			int satID = (int)Bits.bitsToUInt(bits);
+			int satID = (int) Bits.bitsToUInt(bits);
 			if (satID <= 0) {
 				anomalousValues = true;
 			}
-//			System.out.print(" satID: "
-//					+ satID + "  ");
-			
+			System.out.print(" satID: "
+					+ satID + "  ");
+
 			bits = new boolean[8];  // reserved2 (U1)
 			indice = 0;
 			temp1 = Bits.intToBits(data[offset + 7 + 8 + 4 + 1 + 1 + 1], 8);
@@ -288,10 +287,10 @@ public class DecodeRXMRAWX {
 				bits[indice] = temp1[i];
 				indice++;
 			}
-//			System.out.print(" reserved2: "
-//					+ Bits.bitsToUInt(bits) + "  ");
-			
-						
+			System.out.print(" reserved2: "
+					+ Bits.bitsToUInt(bits) + "  ");
+
+
 			bits = new boolean[8]; //freqId (U1)
 			indice = 0;
 			temp1 = Bits.intToBits(data[offset + 7 + 8 + 4 + 1 + 1 + 1 + 1], 8);
@@ -299,24 +298,24 @@ public class DecodeRXMRAWX {
 				bits[indice] = temp1[i];
 				indice++;
 			}
-//			System.out.print(" freqId: "
-//					+ Bits.bitsToUInt(bits) + "  ");
+			System.out.print(" freqId: "
+					+ Bits.bitsToUInt(bits) + "  ");
 
-			
+
 			bits = new boolean[8 * 2]; // locktime (U2)
 			indice = 0;
-			temp1 = Bits.intToBits(data[offset + 7 + 8 + 4 + 1 + 1 + 1 + 1 + 2], 8);			
-			for (int j = offset + 7 + 8 + 4 + 1 + 1 + 1 + 1 + 2; j >=  1 + 1 + 1 + 1 + 4 + 8 + 8 + offset; j--) {
+			temp1 = Bits.intToBits(data[offset + 7 + 8 + 4 + 1 + 1 + 1 + 1 + 2], 8);
+			for (int j = offset + 7 + 8 + 4 + 1 + 1 + 1 + 1 + 2; j >= 1 + 1 + 1 + 1 + 4 + 8 + 8 + offset; j--) {
 				temp1 = Bits.intToBits(data[j], 8);
 				for (int i = 0; i < 8; i++) {
 					bits[indice] = temp1[i];
 					indice++;
 				}
 			}
-//			System.out.print(" locktime: "
-//					+ (int)Bits.bitsTwoComplement(bits) + "  ");
-			
-			
+			System.out.print(" locktime: "
+					+ (int) Bits.bitsTwoComplement(bits) + "  ");
+
+
 			bits = new boolean[8]; // cno (U1)
 			indice = 0;
 			temp1 = Bits.intToBits(data[offset + 7 + 8 + 4 + 1 + 1 + 1 + 1 + 2 + 1], 8);
@@ -324,11 +323,12 @@ public class DecodeRXMRAWX {
 				bits[indice] = temp1[i];
 				indice++;
 			}
-			long snr = Bits.bitsToUInt(bits);	
-//			System.out.print(" cno: "
-//					+ snr + "  ");
-			
-			
+			long snr = Bits.bitsToUInt(bits);
+			System.out.print(" cno: "
+					+ snr + "  ");
+			os.setCno(snr);
+
+
 			bits = new boolean[8]; // prStdev (X1)
 			indice = 0;
 			temp1 = Bits.intToBits(data[offset + 7 + 8 + 4 + 1 + 1 + 1 + 1 + 2 + 1], 8);
@@ -336,8 +336,8 @@ public class DecodeRXMRAWX {
 				bits[indice] = temp1[i];
 				indice++;
 			}
-			
-			
+
+
 			bits = new boolean[8]; // cpStdev (X1)
 			indice = 0;
 			temp1 = Bits.intToBits(data[offset + 7 + 8 + 4 + 1 + 1 + 1 + 1 + 2 + 1 + 1], 8);
@@ -345,8 +345,8 @@ public class DecodeRXMRAWX {
 				bits[indice] = temp1[i];
 				indice++;
 			}
-			
-			
+
+
 			bits = new boolean[8]; // doStdev (X1)
 			indice = 0;
 			temp1 = Bits.intToBits(data[offset + 7 + 8 + 4 + 1 + 1 + 1 + 1 + 2 + 1 + 1 + 1], 8);
@@ -354,8 +354,8 @@ public class DecodeRXMRAWX {
 				bits[indice] = temp1[i];
 				indice++;
 			}
-			
-			
+
+
 			bits = new boolean[8]; // trkStat (X1)
 			indice = 0;
 			temp1 = Bits.intToBits(data[offset + 7 + 8 + 4 + 1 + 1 + 1 + 1 + 2 + 1 + 1 + 1 + 1], 8);
@@ -363,8 +363,8 @@ public class DecodeRXMRAWX {
 				bits[indice] = temp1[i];
 				indice++;
 			}
-			
-			
+
+
 			bits = new boolean[8]; // prStdev (U1)
 			indice = 0;
 			temp1 = Bits.intToBits(data[offset + 7 + 8 + 4 + 1 + 1 + 1 + 1 + 2 + 1 + 1 + 1 + 1 + 1], 8);
@@ -372,67 +372,67 @@ public class DecodeRXMRAWX {
 				bits[indice] = temp1[i];
 				indice++;
 			}
-			
+
 			int total = offset + 7 + 8 + 4 + 1 + 1 + 1 + 1 + 2 + 1 + 1 + 1 + 1 + 1;
-			//System.out.println("Offset " + total);
-//			System.out.println();
-			
-			
-			if (satType == 0 && gpsEnable == true && !anomalousValues){ 
-				/* GPS */
-				os.setSatType('G');
-				os.setSatID(satID);
-				os.setCodeC(ObservationSet.L1, pseudoRange);
-				os.setPhaseCycles(ObservationSet.L1, carrierPhase);
-				os.setDoppler(ObservationSet.L1, d1);
-				os.setSignalStrength(ObservationSet.L1, snr);
-				o.setGps(gpsCounter, os);
-				gpsCounter++;
-				
+			System.out.println("Offset " + total);
+			System.out.println();
+
+
+            /*if (satType == 0 &&  !anomalousValues){
+                *//* GPS */
+			os.setSatType('G');
+			os.setSatID(satID);
+			os.setCodeC(ObservationSet.L1, pseudoRange);
+			os.setPhaseCycles(ObservationSet.L1, carrierPhase);
+			os.setDoppler(ObservationSet.L1, d1);
+			os.setSignalStrength(ObservationSet.L1, snr);
+			obsSet.add(os);
+			//gpsCounter++;
+
 //			} else if (satType == 1) { // SBAS
-//				os.setSatType('S'); 
+//				os.setSatType('S');
 //				os.setSatID(satId);
-			
+
 //			} else if (satType == 2) { // Galileo
 //				os.setSatType('E');
 //				os.setSatID(satId);
-				
+
 //			} else if (satType == 3) { // BeiDou
 //				os.setSatType('C');
 //				os.setSatID(satId);
-			
+
 //			} else if (satType == 4) { // IMES
 //				os.setSatType('I');
 //				os.setSatID(satId);
-				
-			} else if (satType == 5 && qzsEnable == true && !anomalousValues) { 
-				/* QZSS*/
-				os.setSatType('J');
-				os.setSatID(satID);
-				os.setCodeC(ObservationSet.L1, pseudoRange);
-				os.setPhaseCycles(ObservationSet.L1, carrierPhase);
-				os.setDoppler(ObservationSet.L1, d1);
-				os.setSignalStrength(ObservationSet.L1, snr);
-				o.setGps(gpsCounter, os);
-				gpsCounter++;
-						
-			} else if (satType == 6 && gloEnable == true && !anomalousValues) { 
-				/* GLONASS */
-				os.setSatType('R');
-				os.setSatID(satID);
-				os.setCodeC(ObservationSet.L1, pseudoRange);
-				os.setPhaseCycles(ObservationSet.L1, carrierPhase);
-				os.setDoppler(ObservationSet.L1, d1);
-				os.setSignalStrength(ObservationSet.L1, snr);
-				o.setGps(gpsCounter, os);
-				gpsCounter++;
-				
-			}
+
+            /*} else if (satType == 5 && !anomalousValues) {
+                *//* QZSS*//*
+                os.setSatType('J');
+                os.setSatID(satID);
+                os.setCodeC(ObservationSet.L1, pseudoRange);
+                os.setPhaseCycles(ObservationSet.L1, carrierPhase);
+                os.setDoppler(ObservationSet.L1, d1);
+                os.setSignalStrength(ObservationSet.L1, snr);
+                o.setGps(gpsCounter, os);
+                gpsCounter++;
+
+            } else if (satType == 6 && !anomalousValues) {
+				*//* GLONASS *//*
+                os.setSatType('R');
+                os.setSatID(satID);
+                os.setCodeC(ObservationSet.L1, pseudoRange);
+                os.setPhaseCycles(ObservationSet.L1, carrierPhase);
+                os.setDoppler(ObservationSet.L1, d1);
+                os.setSignalStrength(ObservationSet.L1, snr);
+                o.setGps(gpsCounter, os);
+                gpsCounter++;
+
+            }*/
 			anomalousValues = false;
-			
+
 		}
-		// / Checksum
-		CH_A = CH_A & 0xFF;
+/*		// / Checksum
+        CH_A = CH_A & 0xFF;
 		CH_B = CH_B & 0xFF;
 
 		int c1 = in.read();
@@ -442,11 +442,12 @@ public class DecodeRXMRAWX {
 		if(logos!=null) logos.write(c2);
 
 //		if(CH_A != c1 || CH_B!=c2)
-//			throw new UBXException("Wrong message checksum");
-		if (o.getNumSat() == 0) {
-			o = null;
-		}
-		
+//			throw new UBXException("Wrong message checksum");*/
+        /*if (o.getNumSat() == 0) {
+            o = null;
+        }*/
+		o.setObsSet(obsSet);
+
 		return o;
 	}
 
@@ -468,6 +469,6 @@ public class DecodeRXMRAWX {
 		//System.out.println(sdf.format(c.getTime()));
 		//ubx.log( (c.getTime().getTime())+" "+c.getTime()+" "+week+" "+tow+"\n\r");
 
-		return c.getTimeInMillis() + week*7*24*3600*1000 + tow ;
+		return c.getTimeInMillis() + week * 7 * 24 * 3600 * 1000 + tow;
 	}
 }

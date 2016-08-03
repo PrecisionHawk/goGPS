@@ -48,6 +48,12 @@
 			<scope>test</scope>
 		</dependency>
 	</dependencies>
+	<distributionManagement>
+		<repository>
+			<id>nexus</id>
+			<url>http://nexus.precisionhawk.com/content/repositories/releases/</url>
+		</repository>
+	</distributionManagement>
 
 	<build>
 		<sourceDirectory>${basedir}/src/main/java</sourceDirectory>
